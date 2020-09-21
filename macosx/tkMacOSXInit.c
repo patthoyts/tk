@@ -283,7 +283,6 @@ TkpInit(
      */
 
     if (!initialized) {
-	struct stat st;
 	Bool shouldOpenConsole = NO;
 
 	/*
