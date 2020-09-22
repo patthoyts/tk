@@ -179,6 +179,13 @@ typedef struct {
 } ThreadSpecificData;
 static Tcl_ThreadDataKey dataKey;
 
+typedef BOOL (WINAPI LPFN_SystemParametersInfoForDpi)(UINT uiAction, UINT uiParam, PVOID pvParam, UINT  fWinIni, UINT  dpi);
+LPFN_SystemParametersInfoForDpi *pfnSystemParametersInfoForDpi = NULL;
+typedef UINT (WINAPI LPFN_GetDpiForWindow)(HWND hwnd);
+LPFN_GetDpiForWindow *pfnGetDpiForWindow = NULL;
+typedef UINT (WINAPI LPFN_GetDpiForSystem)();
+LPFN_GetDpiForSystem *pfnGetDpiForSystem = NULL;
+
 /*
  * Procedures used only in this file.
  */
@@ -257,6 +264,13 @@ void
 TkpFontPkgInit(
     TkMainInfo *mainPtr)	/* The application being created. */
 {
+	HMODULE user32 = LoadLibraryExW(L"user32", NULL, 0);
+	if (user32 != NULL) {
+		pfnSystemParametersInfoForDpi = (LPFN_SystemParametersInfoForDpi *)
+			GetProcAddress(user32, "SystemParametersInfoForDpi");
+		pfnGetDpiForWindow = (LPFN_GetDpiForWindow *)GetProcAddress(user32, "GetDpiForWindow");
+		pfnGetDpiForSystem = (LPFN_GetDpiForSystem *)GetProcAddress(user32, "GetDpiForSystem");
+	}
     TkWinSetupSystemFonts(mainPtr);
 }
 
@@ -389,6 +403,7 @@ TkWinSetupSystemFonts(
     NONCLIENTMETRICSW ncMetrics;
     ICONMETRICSW iconMetrics;
     HFONT hFont;
+    UINT dpi;
 
     interp = (Tcl_Interp *) mainPtr->interp;
     tkwin = (Tk_Window) mainPtr->winPtr;
@@ -397,6 +412,18 @@ TkWinSetupSystemFonts(
     if (((TkWindow *) tkwin)->mainPtr == NULL) {
 	((TkWindow *) tkwin)->mainPtr = mainPtr;
     }
+
+	HDC hdc = GetDC(NULL);
+	dpi = GetDeviceCaps(hdc, LOGPIXELSY);
+	ReleaseDC(NULL, hdc);
+
+	if (pfnSystemParametersInfoForDpi != NULL && pfnGetDpiForWindow != NULL) {
+	    Window window = Tk_WindowId(tkwin);
+		if (window == None)
+			dpi = pfnGetDpiForSystem();
+		else
+			dpi = pfnGetDpiForWindow(TkWinGetHWND(window));
+	}
 
     /*
      * If this API call fails then we will fallback to setting these named
@@ -407,8 +434,8 @@ TkWinSetupSystemFonts(
 
     ZeroMemory(&ncMetrics, sizeof(ncMetrics));
     ncMetrics.cbSize = sizeof(ncMetrics);
-    if (SystemParametersInfoW(SPI_GETNONCLIENTMETRICS,
-	    sizeof(ncMetrics), &ncMetrics, 0)) {
+    if (pfnSystemParametersInfoForDpi(SPI_GETNONCLIENTMETRICS,
+	    sizeof(ncMetrics), &ncMetrics, 0, dpi)) {
 	CreateNamedSystemLogFont(interp, tkwin, "TkDefaultFont",
 		&ncMetrics.lfMessageFont);
 	CreateNamedSystemLogFont(interp, tkwin, "TkHeadingFont",
@@ -423,11 +450,14 @@ TkWinSetupSystemFonts(
 		&ncMetrics.lfCaptionFont);
 	CreateNamedSystemLogFont(interp, tkwin, "TkSmallCaptionFont",
 		&ncMetrics.lfSmCaptionFont);
-    }
+    } else {
+		DWORD err = GetLastError();
+		OutputDebugStringW(L"err");
+	}
 
     iconMetrics.cbSize = sizeof(iconMetrics);
-    if (SystemParametersInfoW(SPI_GETICONMETRICS, sizeof(iconMetrics),
-	    &iconMetrics, 0)) {
+    if (pfnSystemParametersInfoForDpi(SPI_GETICONMETRICS, sizeof(iconMetrics),
+	    &iconMetrics, 0, dpi)) {
 	CreateNamedSystemLogFont(interp, tkwin, "TkIconFont",
 		&iconMetrics.lfFont);
     }
@@ -442,12 +472,12 @@ TkWinSetupSystemFonts(
 	    0, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
 	    0, 0, DEFAULT_QUALITY, FIXED_PITCH | FF_MODERN, L""
 	};
-	long pointSize, dpi;
-	HDC hdc = GetDC(NULL);
-	dpi = GetDeviceCaps(hdc, LOGPIXELSY);
+	long pointSize;
+	//HDC hdc = GetDC(NULL);
+	//dpi = GetDeviceCaps(hdc, LOGPIXELSY);
 	pointSize = -MulDiv(ncMetrics.lfMessageFont.lfHeight, 72, dpi);
 	lfFixed.lfHeight = -MulDiv(pointSize+1, dpi, 72);
-	ReleaseDC(NULL, hdc);
+	//ReleaseDC(NULL, hdc);
 	CreateNamedSystemLogFont(interp, tkwin, "TkFixedFont", &lfFixed);
     }
 

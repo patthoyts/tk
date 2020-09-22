@@ -8001,6 +8001,30 @@ WmProc(
 	}
 	break;
 
+	case WM_DPICHANGED:
+	    winPtr = GetTopLevel(hwnd);
+	    TkWinSetupSystemFonts(winPtr->mainPtr);
+	    // FIXME: Should factor out the WM_DISPLAYCHANGED bit from above.
+	    {
+		HMONITOR monitor = MonitorFromWindow(hwnd, 0);
+		MONITORINFO monitorInfo = {0};
+		monitorInfo.cbSize = sizeof(monitorInfo);
+		GetMonitorInfoW(monitor, &monitorInfo);
+
+	    	Screen *screen = Tk_Screen(winPtr);
+		HDC dc = GetDC(NULL);
+		int dpi_x = LOWORD(wParam);
+		int dpi_y = HIWORD(wParam);
+		screen->width = monitorInfo.rcWork.right - monitorInfo.rcWork.left;
+		screen->height = monitorInfo.rcWork.bottom - monitorInfo.rcWork.top;
+		LPRECT recommendedRect = (LPRECT)lParam;
+		screen->mwidth = MulDiv(screen->width, 254, dpi_x * 10);
+		screen->mheight = MulDiv(screen->height, 254, dpi_y * 10);
+		ReleaseDC(NULL, dc);
+		//TkWinDisplayChanged(Tk_Display(winPtr));
+	    }
+	break;
+
     case WM_WINDOWPOSCHANGED:
 	ConfigureTopLevel((WINDOWPOS *) lParam);
 	result = 0;
