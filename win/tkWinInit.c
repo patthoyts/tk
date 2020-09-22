@@ -11,7 +11,7 @@
  */
 
 #include "tkWinInt.h"
-
+#include <ole2.h>
 
 /*
  *----------------------------------------------------------------------
@@ -42,6 +42,7 @@ TkpInit(
      */
 
     TkWinXInit(Tk_GetHINSTANCE());
+    CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
     return TCL_OK;
 }
 

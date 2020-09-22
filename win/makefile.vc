@@ -152,6 +152,7 @@ TKOBJS = \
 	$(TMP_DIR)\tkWin3d.obj \
 	$(TMP_DIR)\tkWin32Dll.obj \
 	$(TMP_DIR)\tkWinButton.obj \
+	$(TMP_DIR)\tkWinButtonProvider.obj \
 	$(TMP_DIR)\tkWinClipboard.obj \
 	$(TMP_DIR)\tkWinColor.obj \
 	$(TMP_DIR)\tkWinConfig.obj \

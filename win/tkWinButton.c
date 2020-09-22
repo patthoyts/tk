@@ -13,6 +13,7 @@
 #define OEMRESOURCE
 #include "tkWinInt.h"
 #include "tkButton.h"
+#include "tkWinButtonProvider.h"
 
 /*
  * These macros define the base style flags for the different button types.
@@ -22,6 +23,7 @@
 #define PUSH_STYLE  (LABEL_STYLE | BS_PUSHBUTTON)
 #define CHECK_STYLE (LABEL_STYLE | BS_CHECKBOX)
 #define RADIO_STYLE (LABEL_STYLE | BS_RADIOBUTTON)
+
 
 /*
  * Declaration of Windows specific button structure.
@@ -33,6 +35,7 @@ typedef struct WinButton {
     HWND hwnd;			/* Current window handle. */
     Pixmap pixmap;		/* Bitmap for rendering the button. */
     DWORD style;		/* Window style flags. */
+    IUnknown *provider;
 } WinButton;
 
 /*
@@ -93,6 +96,41 @@ const Tk_ClassProcs tkpButtonProcs = {
     NULL					/* modalProc */
 };
 
+
+/* ---------------------------------------------- */
+#if 0
+static STDMETHODIMP IRawElementProviderSimple_GetPropertyValue(IRawElementProviderSimple *This, PROPERTYID propertyId, VARIANT *value)
+{
+    TkWinButtonProvider *provider = (TkWinButtonProvider *)This;
+    WinButton *butPtr = (WinButton *)((TkWindow *)provider->tkwin)->instanceData;
+    Tcl_DString ds;
+    Tcl_DStringInit(&ds);
+    if (propertyId == UIA_ControlTypePropertyId) {
+	value->vt = VT_I4;
+        value->lVal = UIA_ButtonControlTypeId;
+    } else if (propertyId == UIA_AutomationIdPropertyId) {
+	value->bstrVal = SysAllocString(Tcl_UtfToWCharDString(Tk_PathName(provider->tkwin), -1, &ds));
+	value->vt = VT_BSTR;
+    } else if (propertyId == UIA_NamePropertyId) {
+	if (butPtr && butPtr->info.textPtr) {
+	    value->bstrVal = SysAllocString(Tcl_GetUnicode(butPtr->info.textPtr));
+	} else {
+	    value->bstrVal = SysAllocString(Tcl_UtfToWCharDString(Tk_Name(provider->tkwin), -1, &ds));
+	}
+	value->vt = VT_BSTR;
+    } else if (propertyId == UIA_ClassNamePropertyId) {
+	value->bstrVal = SysAllocString(Tcl_UtfToWCharDString(Tk_Class(provider->tkwin), -1, &ds));
+	value->vt = VT_BSTR;
+    } else if (propertyId == UIA_FrameworkIdPropertyId) {
+	value->bstrVal = SysAllocString(L"Tk");
+	value->vt = VT_BSTR;
+    } else {
+	value->vt = VT_EMPTY;
+    }
+    Tcl_DStringFree(&ds);
+    return S_OK;
+}
+#endif
 
 /*
  *----------------------------------------------------------------------
@@ -185,9 +223,9 @@ void
 TkpButtonSetDefaults()
 {
     int width = GetSystemMetrics(SM_CXEDGE);
-	if (width > 0) {
-	    sprintf(tkDefButtonBorderWidth, "%d", width);
-	}
+    if (width > 0) {
+	sprintf(tkDefButtonBorderWidth, "%d", width);
+    }
 }
 
 /*
@@ -214,6 +252,7 @@ TkpCreateButton(
 
     butPtr = ckalloc(sizeof(WinButton));
     butPtr->hwnd = NULL;
+    butPtr->provider = NULL;
     return (TkButton *) butPtr;
 }
 
@@ -282,11 +321,44 @@ CreateProc(
  */
 
 void
+TkpInvokeButton(
+    TkButton *butPtr)
+{
+    WinButton *winButPtr = (WinButton *)butPtr;
+
+    if (winButPtr->provider != NULL) {
+        ButtonProvider_OnInvoke(butPtr->tkwin, winButPtr->provider);
+    }
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * TkpDestroyButton --
+ *
+ *	Free data structures associated with the button control.
+ *
+ * Results:
+ *	None.
+ *
+ * Side effects:
+ *	Restores the default control state.
+ *
+ *----------------------------------------------------------------------
+ */
+
+void
 TkpDestroyButton(
     TkButton *butPtr)
 {
     WinButton *winButPtr = (WinButton *)butPtr;
     HWND hwnd = winButPtr->hwnd;
+
+    if (winButPtr->provider != NULL) {
+        ButtonProvider_OnDestroy(butPtr->tkwin, winButPtr->provider);
+	winButPtr->provider->lpVtbl->Release(winButPtr->provider);
+	winButPtr->provider = NULL;
+    }
 
     if (hwnd) {
 	SetWindowLongPtrW(hwnd, GWLP_WNDPROC, (LONG_PTR) winButPtr->oldProc);
@@ -1233,6 +1305,9 @@ ButtonProc(
     switch(message) {
     case WM_ERASEBKGND:
 	return 0;
+
+    case WM_GETOBJECT:
+	return ButtonProvider_OnGetObject(tkwin, wParam, lParam, &butPtr->provider);
 
     case BM_GETCHECK:
 	if (((butPtr->info.type == TYPE_CHECK_BUTTON)

@@ -318,5 +318,8 @@ MODULE_SCOPE void 	TkpDestroyButton(TkButton *butPtr);
 MODULE_SCOPE void	TkpDisplayButton(ClientData clientData);
 #endif
 MODULE_SCOPE int	TkInvokeButton(TkButton *butPtr);
+#ifndef TkpInvokeButton
+MODULE_SCOPE void	TkpInvokeButton(TkButton *butPtr);
+#endif
 
 #endif /* _TKBUTTON */
